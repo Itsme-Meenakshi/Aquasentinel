@@ -1,0 +1,9 @@
+pandas
+numpy
+scikit-learn
+requests
+matplotlib
+folium
+geopandas
+netCDF4
+xarray
