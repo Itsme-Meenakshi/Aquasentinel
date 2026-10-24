@@ -1,0 +1,4 @@
+# Final features will be defined after data auditing.
+# Only use variables available at prediction time.
+features: []
+target: "PUFFER Presence (1/0)"

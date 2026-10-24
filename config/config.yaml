@@ -1,0 +1,9 @@
+project:
+  name: pufferfish-digital-twin
+  region: Kerala
+  target_column: "PUFFER Presence (1/0)"
+
+data:
+  raw_dir: data/raw
+  external_dir: data/external
+  processed_dir: data/processed

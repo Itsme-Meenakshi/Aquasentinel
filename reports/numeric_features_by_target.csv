@@ -1,0 +1,5 @@
+,Latitude,Latitude,Latitude,Latitude,Longitude,Longitude,Longitude,Longitude,Depth (m),Depth (m),Depth (m),Depth (m),Duration (Hrs),Duration (Hrs),Duration (Hrs),Duration (Hrs),Total catch (Kg),Total catch (Kg),Total catch (Kg),Total catch (Kg),CPUE(catch per unit effoert) Total Catch (kg/hr),CPUE(catch per unit effoert) Total Catch (kg/hr),CPUE(catch per unit effoert) Total Catch (kg/hr),CPUE(catch per unit effoert) Total Catch (kg/hr)
+,count,mean,median,std,count,mean,median,std,count,mean,median,std,count,mean,median,std,count,mean,median,std,count,mean,median,std
+PUFFER Presence (1/0),,,,,,,,,,,,,,,,,,,,,,,,
+0,215,9.861,9.85,0.256,215,76.17,76.184,0.077,215,14.87,13.5,7.082,215,1.65,1.75,0.742,215,2843.163,2300.0,2434.335,215,1518.094,1428.571,769.731
+1,38,9.902,9.867,0.333,38,76.164,76.175,0.101,38,13.907,11.07,7.232,38,1.579,1.375,0.683,38,2831.579,2450.0,1985.945,38,1666.514,1658.182,656.28
