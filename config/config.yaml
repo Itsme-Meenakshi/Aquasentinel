@@ -1,9 +1,39 @@
 project:
   name: pufferfish-digital-twin
-  region: Kerala
+  region: Kerala (central coast, Kochi - Alappuzha fishing ground)
   target_column: "PUFFER Presence (1/0)"
 
 data:
   raw_dir: data/raw
   external_dir: data/external
   processed_dir: data/processed
+  cleaned_file: data/processed/pufferfish_cleaned.csv
+
+# Sea-surface temperature: NOAA OISST v2.1 (0.25 degree, daily) through the public ERDDAP server.
+# If the server cannot be reached, download the same grid manually and pass it with
+#   python scripts/run_pipeline.py --sst-csv path/to/file.csv   (columns: time, latitude, longitude, sst)
+sst:
+  erddap_base: "https://coastwatch.pfeg.noaa.gov/erddap/griddap"
+  erddap_bases:            # tried in order; each is retried, so a slow or blocked server is not fatal
+    - "https://coastwatch.pfeg.noaa.gov/erddap/griddap"
+    - "https://upwell.pfeg.noaa.gov/erddap/griddap"
+  dataset_id: "ncdcOisst21Agg_LonPM180"
+  cache_file: data/external/oisst_sst_kerala.csv
+  bbox: {lat_min: 8.5, lat_max: 11.5, lon_min: 75.5, lon_max: 77.0}
+  window_days: 7          # mean SST over the 7 days BEFORE the haul date (never the haul day)
+  min_valid_days: 5       # need at least this many valid days in the window
+  max_match_km: 60        # nearest valid ocean pixel must be within this distance
+
+evaluation:
+  min_train_fraction: 0.4   # first 40% of hauls (by date) are the minimum training period
+  chrono_folds: 5
+  cv_repeats: 10
+  bootstrap: 1000
+  permutations: 300
+  random_state: 42
+
+twin:
+  state_dir: artifacts/twin
+  default_model: logistic_season2
+  coverage_km: 25           # no prediction is shown farther than this from an observed haul
+  min_new_hauls_for_retrain: 1

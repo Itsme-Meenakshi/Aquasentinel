@@ -1,4 +1,19 @@
-# Final features will be defined after data auditing.
-# Only use variables available at prediction time.
-features: []
+# Only variables known BEFORE the haul may be predictors.
 target: "PUFFER Presence (1/0)"
+
+leakage_columns:   # known only after hauling, or derived from the target
+  - "Duration (Hrs)"
+  - "Total catch (Kg)"
+  - "Major Catch (Species)"
+  - "Puffer Species"
+  - "CPUE(catch per unit effoert) Total Catch (kg/hr)"
+
+# Rule of thumb: about 10 positive hauls per predictor. With 38 positives, keep logistic models to 3-4 predictors.
+feature_sets:
+  season1:           [doy_sin, doy_cos]
+  season2:           [doy_sin, doy_cos, doy_sin2, doy_cos2]
+  season1_depth:     [doy_sin, doy_cos, depth]
+  season1_sst:       [doy_sin, doy_cos, sst_prev7]
+  season1_depth_sst: [doy_sin, doy_cos, depth, sst_prev7]
+  all_prehaul_nosst: [doy_sin, doy_cos, depth, lat, lon, gear_mini]
+  all_prehaul:       [doy_sin, doy_cos, depth, lat, lon, gear_mini, sst_prev7]

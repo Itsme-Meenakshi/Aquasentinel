@@ -1,7 +1,0 @@
-Proposed_Feature,Potential_Source,Purpose,Status
-Sea surface temperature,Copernicus Marine / NASA,Describe thermal conditions,To source and validate
-Sea surface salinity,Copernicus Marine,Describe surface-water conditions,To source and validate
-Chlorophyll-a,Copernicus Marine / NASA Ocean Color,Proxy for ocean productivity,To source and validate
-Ocean current components,Copernicus Marine,Describe water movement,To source and validate
-Dissolved oxygen,"Copernicus Marine, if suitable coverage exists",Describe marine habitat conditions,To source and validate
-Wave height,Copernicus Marine,Describe sea state,To source and validate
