@@ -51,3 +51,19 @@ def test_rejected_submission_is_not_added(tw):
     _, _, sid = tw.submit({"date": "2025-06-06", "lat": 9.85, "lon": 76.17, "depth": 12, "gear": "Ring seine", "puffer": 1})
     tw.review(sid, False, "reviewer", "bad label")
     assert len(tw.observations()) == n0
+
+
+class _Broken:                            # mimics the unpickled-with-a-different-version failure
+    def predict_proba(self, X):
+        raise AttributeError("_fill_dtype")
+
+
+def test_model_saved_by_another_sklearn_version_is_refitted(tmp_path, hauls):
+    import joblib
+    from pufferfish.features.build import build_features
+    t = TwinState(tmp_path)
+    t.initialise(build_features(hauls), "logistic_season2")
+    ok = t.predict("2024-01-10", 9.85, 76.17, 12)["p"]
+    b = joblib.load(t.model_file)
+    b["model"] = _Broken(); joblib.dump(b, t.model_file)
+    assert abs(t.predict("2024-01-10", 9.85, 76.17, 12)["p"] - ok) < 1e-9

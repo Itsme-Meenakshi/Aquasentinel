@@ -65,6 +65,23 @@ class TwinState:
             h = h[h["model"].notna()]
         return h.iloc[-1].to_dict() if len(h) else {}
 
+    def _bundle(self) -> dict:
+        """Load the saved model. If it was saved with another scikit-learn version and cannot predict here
+        (common after deploying to a server), refit the same model from the saved hauls instead of failing."""
+        b = joblib.load(self.model_file)
+        try:
+            b["model"].predict_proba(pd.DataFrame([b["medians"]])[b["features"]])
+        except Exception:
+            df = self._features(self.observations())
+            model, cols = candidate(b["name"])
+            b = {"model": clone(model).fit(df[cols], df["puffer"].to_numpy()), "name": b["name"], "features": cols,
+                 "medians": df[cols].median().to_dict()}
+            try:
+                joblib.dump(b, self.model_file)
+            except OSError:
+                pass
+        return b
+
     # ---------- build / rebuild ----------
     def _features(self, obs: pd.DataFrame) -> pd.DataFrame:
         df = add_gear_features(add_time_features(obs.sort_values("date").reset_index(drop=True)))
@@ -173,7 +190,7 @@ class TwinState:
         coverage_km from every observed haul, or when fewer than 10 observed hauls were taken within +-30 days
         of the same time of year.
         """
-        bundle = joblib.load(self.model_file)
+        bundle = self._bundle()
         obs = self._features(self.observations())
         dist, n_near = self.coverage(lat, lon)
         row = add_gear_features(add_time_features(pd.DataFrame([{"date": pd.Timestamp(date), "lat": lat, "lon": lon,
