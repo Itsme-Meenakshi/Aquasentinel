@@ -18,7 +18,7 @@ import pandas as pd
 from sklearn.base import clone
 from pufferfish.config import CFG, PROJECT_ROOT, path
 from pufferfish.environmental.sst import haversine_km
-from pufferfish.features.build import add_time_features, add_gear_features, add_recent_sightings, recent_positive_counts
+from pufferfish.features.build import add_time_features, add_gear_features
 from pufferfish.models import evaluate as ev
 from pufferfish.models.estimators import candidate
 from pufferfish.models.train import data_hash
@@ -84,10 +84,9 @@ class TwinState:
 
     # ---------- build / rebuild ----------
     def _features(self, obs: pd.DataFrame) -> pd.DataFrame:
-        df = add_recent_sightings(add_gear_features(add_time_features(obs.sort_values("date").reset_index(drop=True))))
-        for c in ("sst_prev7", "sst_trend14"):
-            if c not in df:
-                df[c] = np.nan
+        df = add_gear_features(add_time_features(obs.sort_values("date").reset_index(drop=True)))
+        if "sst_prev7" not in df:
+            df["sst_prev7"] = np.nan
         return df
 
     def _fit(self, obs, model_name, event, note=""):
@@ -114,9 +113,8 @@ class TwinState:
     def initialise(self, hauls: pd.DataFrame, model_name=None, source="CMFRI 2023-26"):
         obs = hauls[["date", "lat", "lon", "depth", "gear", "puffer"]].copy()
         obs["source"] = source
-        for c in ("sst_prev7", "sst_trend14"):
-            if c in hauls:
-                obs[c] = hauls[c].values
+        if "sst_prev7" in hauls:
+            obs["sst_prev7"] = hauls["sst_prev7"].values
         self.pending_file.write_text("[]")
         return self._fit(obs, model_name or CFG["twin"]["default_model"], "initial", "built from the supplied CMFRI hauls")
 
@@ -185,30 +183,7 @@ class TwinState:
         d = haversine_km(lat, lon, obs["lat"].to_numpy(), obs["lon"].to_numpy())
         return float(d.min()), int((d <= CFG["twin"]["coverage_km"]).sum())
 
-    def _scenario_rows(self, dates, lat, lon, depth, gear, sst_prev7, recent_pos, bundle, obs):
-        """Feature rows for 'what if' questions. Inputs the user did not give take a typical value from the training
-        data; the recent-sightings count is read from the recorded hauls unless the user supplies it."""
-        n = len(dates)
-        row = pd.DataFrame({"date": pd.to_datetime(list(dates)), "lat": [lat] * n, "lon": [lon] * n,
-                            "depth": [depth] * n, "gear": [gear] * n})
-        row = add_gear_features(add_time_features(row))
-        row["sst_prev7"] = np.nan if sst_prev7 is None else sst_prev7
-        row["sst_trend14"] = np.nan
-        rp = (recent_positive_counts(row["date"], row["lat"], row["lon"], obs) if recent_pos is None
-              else np.full(n, float(recent_pos)))
-        row["recent_pos"], row["recent_pos_log"] = rp, np.log1p(rp)
-        for c in bundle["features"]:
-            if row[c].isna().any():
-                row[c] = row[c].fillna(bundle["medians"].get(c, 0.0))
-        return row
-
-    def _season_counts(self, obs, dates):
-        doy = pd.DatetimeIndex(dates).dayofyear.to_numpy()
-        od = obs["date"].dt.dayofyear.to_numpy()
-        gap = np.abs(((od[None, :] - doy[:, None] + 182) % 365) - 182)
-        return (gap <= 30).sum(1)
-
-    def predict(self, date, lat, lon, depth, gear="Ring seine", sst_prev7=None, n_boot=200, seed=0, recent_pos=None):
+    def predict(self, date, lat, lon, depth, gear="Ring seine", sst_prev7=None, n_boot=200, seed=0):
         """Probability of pufferfish in a haul with these conditions, with a 90% bootstrap range.
 
         Returns a dict. status is 'insufficient_data' (no probability) when the position is farther than
@@ -218,12 +193,17 @@ class TwinState:
         bundle = self._bundle()
         obs = self._features(self.observations())
         dist, n_near = self.coverage(lat, lon)
-        row = self._scenario_rows([date], lat, lon, depth, gear, sst_prev7, recent_pos, bundle, obs)
+        row = add_gear_features(add_time_features(pd.DataFrame([{"date": pd.Timestamp(date), "lat": lat, "lon": lon,
+                                                                 "depth": depth, "gear": gear}])))
+        row["sst_prev7"] = np.nan if sst_prev7 is None else sst_prev7
         cols = bundle["features"]
-        n_season = int(self._season_counts(obs, row["date"])[0])
+        for c in cols:                                  # unspecified inputs -> typical value from training data
+            if pd.isna(row[c].iloc[0]):
+                row[c] = bundle["medians"].get(c, 0.0)
+        doy_gap = np.abs(((obs["date"].dt.dayofyear - row["date"].dt.dayofyear.iloc[0] + 182) % 365) - 182)
+        n_season = int((doy_gap <= 30).sum())
         out = {"nearest_haul_km": round(dist, 1), "hauls_within_coverage": n_near, "hauls_same_season": n_season,
-               "model": bundle["name"], "features_used": cols, "base_rate": float(obs["puffer"].mean()),
-               "recent_pos_used": float(row["recent_pos"].iloc[0])}
+               "model": bundle["name"], "features_used": cols, "base_rate": float(obs["puffer"].mean())}
         if dist > CFG["twin"]["coverage_km"] or n_season < 10:
             reason = (f"nearest observed haul is {dist:.0f} km away (limit {CFG['twin']['coverage_km']} km)"
                       if dist > CFG["twin"]["coverage_km"] else f"only {n_season} observed hauls within 30 days of this time of year")
@@ -237,68 +217,3 @@ class TwinState:
             ps.append(clone(bundle["model"]).fit(obs.iloc[i][cols], y[i]).predict_proba(row[cols])[:, 1][0])
         lo, hi = np.percentile(ps, [5, 95])
         return {**out, "status": "ok", "reason": "", "p": p, "p_low": float(lo), "p_high": float(hi)}
-
-    def risk_curve(self, start, weeks=12, step_days=7, lat=None, lon=None, depth=None, gear="Ring seine",
-                   n_boot=100, seed=0):
-        """Chance of pufferfish for a run of dates at one place (a 'risk calendar'), with a 90% bootstrap band.
-        Dates where the twin has too little data get no number (status 'insufficient_data')."""
-        bundle = self._bundle()
-        obs = self._features(self.observations())
-        lat = float(obs["lat"].median()) if lat is None else lat
-        lon = float(obs["lon"].median()) if lon is None else lon
-        depth = float(obs["depth"].median()) if depth is None else depth
-        dates = pd.date_range(pd.Timestamp(start), periods=int(weeks), freq=f"{int(step_days)}D")
-        rows = self._scenario_rows(dates, lat, lon, depth, gear, None, None, bundle, obs)
-        cols = bundle["features"]
-        p = bundle["model"].predict_proba(rows[cols])[:, 1]
-        rng, y, boots = np.random.default_rng(seed), obs["puffer"].to_numpy(), []
-        for _ in range(n_boot):
-            i = rng.integers(0, len(obs), len(obs))
-            if y[i].sum() == 0:
-                continue
-            boots.append(clone(bundle["model"]).fit(obs.iloc[i][cols], y[i]).predict_proba(rows[cols])[:, 1])
-        lo, hi = np.percentile(np.array(boots), [5, 95], axis=0)
-        dist, _ = self.coverage(lat, lon)
-        n_season = self._season_counts(obs, dates)
-        ok = (dist <= CFG["twin"]["coverage_km"]) & (n_season >= 10)
-        return pd.DataFrame({"date": dates, "p": np.where(ok, p, np.nan), "p_low": np.where(ok, lo, np.nan),
-                             "p_high": np.where(ok, hi, np.nan), "hauls_same_season": n_season,
-                             "status": np.where(ok, "ok", "insufficient_data")})
-
-    def explain(self) -> pd.DataFrame:
-        """What the current model relies on. For a logistic model: the weight of each (standardised) input.
-        Season enters as cosine/sine pairs, so read those together as one smooth curve through the year."""
-        bundle = self._bundle()
-        m = bundle["model"].named_steps["m"] if hasattr(bundle["model"], "named_steps") else bundle["model"]
-        cols = bundle["features"]
-        if hasattr(m, "coef_"):
-            w = m.coef_[0]
-            return pd.DataFrame({"input": cols, "weight": w, "effect_on_odds_per_1_sd": np.exp(w), "kind": "logistic weight"})
-        if hasattr(m, "feature_importances_"):
-            return pd.DataFrame({"input": cols, "weight": m.feature_importances_, "effect_on_odds_per_1_sd": np.nan,
-                                 "kind": "forest importance"})
-        return pd.DataFrame({"input": cols, "weight": np.nan, "effect_on_odds_per_1_sd": np.nan, "kind": "not available"})
-
-    def drift(self, window=None) -> dict:
-        """Is the model still working on the newest hauls? Refit on everything before the last `window` hauls,
-        predict those hauls, and compare the squared error with simply guessing the earlier base rate."""
-        window = int(window or CFG["twin"].get("drift_window", 30))
-        meta = self.meta()
-        name = meta.get("model") or CFG["twin"]["default_model"]
-        obs = self._features(self.observations())
-        if len(obs) < window + 60:
-            return {"status": "not_enough_data", "message": f"needs at least {window + 60} hauls", "window": window}
-        model, cols = candidate(name)
-        y = obs["puffer"].to_numpy()
-        tr, te = np.arange(len(obs) - window), np.arange(len(obs) - window, len(obs))
-        p = clone(model).fit(obs.iloc[tr][cols], y[tr]).predict_proba(obs.iloc[te][cols])[:, 1]
-        base = float(y[tr].mean())
-        brier, ref = float(np.mean((p - y[te]) ** 2)), float(np.mean((base - y[te]) ** 2))
-        skill = 1 - brier / ref if ref > 0 else float("nan")
-        status = "ok" if (np.isnan(skill) or skill > 0) else "watch"
-        msg = ("The model predicts the newest hauls better than a constant guess." if status == "ok"
-               else "The model does worse than a constant guess on the newest hauls: review the data and consider retraining.")
-        return {"status": status, "window": window, "model": name, "newest_positives": int(y[te].sum()),
-                "brier": round(brier, 4), "brier_constant_guess": round(ref, 4),
-                "brier_skill": None if np.isnan(skill) else round(skill, 3),
-                "from": str(obs["date"].iloc[te[0]].date()), "to": str(obs["date"].iloc[te[-1]].date()), "message": msg}

@@ -65,6 +65,5 @@ def test_model_saved_by_another_sklearn_version_is_refitted(tmp_path, hauls):
     t.initialise(build_features(hauls), "logistic_season2")
     ok = t.predict("2024-01-10", 9.85, 76.17, 12)["p"]
     b = joblib.load(t.model_file)
-
     b["model"] = _Broken(); joblib.dump(b, t.model_file)
     assert abs(t.predict("2024-01-10", 9.85, 76.17, 12)["p"] - ok) < 1e-9
