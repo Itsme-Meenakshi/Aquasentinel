@@ -7,7 +7,7 @@ import pandas as pd
 def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
     """Cyclical day-of-year features (December and January are neighbours, not opposites)."""
     out = df.copy()
-    angle = 2 * np.pi * out["date"].dt.dayofyear / 365.25
+    angle = 2 * np.pi * out["date"].dt.day_of_year / 365.25
     out["doy_sin"], out["doy_cos"] = np.sin(angle), np.cos(angle)
     out["doy_sin2"], out["doy_cos2"] = np.sin(2 * angle), np.cos(2 * angle)  # second harmonic: two peaks per year
     out["month"] = out["date"].dt.month

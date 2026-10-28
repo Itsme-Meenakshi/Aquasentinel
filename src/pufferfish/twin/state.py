@@ -183,7 +183,7 @@ class TwinState:
         for c in cols:                                  # unspecified inputs -> typical value from training data
             if pd.isna(row[c].iloc[0]):
                 row[c] = bundle["medians"].get(c, 0.0)
-        doy_gap = np.abs(((obs["date"].dt.dayofyear - row["date"].dt.dayofyear.iloc[0] + 182) % 365) - 182)
+        doy_gap = np.abs(((obs["date"].dt.day_of_year - row["date"].dt.day_of_year.iloc[0] + 182) % 365) - 182)
         n_season = int((doy_gap <= 30).sum())
         out = {"nearest_haul_km": round(dist, 1), "hauls_within_coverage": n_near, "hauls_same_season": n_season,
                "model": bundle["name"], "features_used": cols, "base_rate": float(obs["puffer"].mean())}

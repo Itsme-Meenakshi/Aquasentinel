@@ -9,3 +9,8 @@ requests
 pyyaml
 openpyxl
 pytest
+# CNN camera recognition
+torch
+torchvision
+opencv-python-headless
+Pillow
